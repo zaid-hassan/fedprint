@@ -33,6 +33,8 @@ Brother DCP-T230  (CUPS queue: DCPT230)
 ## Features
 
 - Drag-and-drop or file-picker upload of **PDF, PNG, JPG/JPEG, TXT** (max 25 MB).
+- A built-in **Markdown editor** with live preview that prints a clean, formatted
+  PDF (headings, lists, quotes, code blocks) — no attachments or extra apps.
 - Print options: copies (1–20), page range (`all`, `1-3`, `1,3,5`), orientation,
   paper size (A4/A5/Letter), color mode, and duplex **only when CUPS reports it**.
 - Live printer status from CUPS, refreshed while the page is open.
@@ -207,7 +209,7 @@ FedPrint does not change the firewall automatically.
 
 2. Connect the phone to the same Wi-Fi network.
 3. Open `http://<fedora-ip>:27183` in Chrome or any browser.
-4. Drop a file, set options, and tap **Print**.
+4. Tap **Upload** to send a document, or **Write** to compose a Markdown note, then tap **Print**.
 
 If `avahi-daemon` and `avahi-tools` are installed, FedPrint also publishes
 `fedprint.local`, so Android devices with mDNS support can use
@@ -223,6 +225,7 @@ If `avahi-daemon` and `avahi-tools` are installed, FedPrint also publishes
 | `GET` | `/api/printer/status` | Printer state and CUPS capabilities. |
 | `GET` | `/api/jobs` | Recent jobs (active + completed) from CUPS. |
 | `POST` | `/api/print` | Multipart upload + options; submits to CUPS. |
+| `POST` | `/api/print/markdown` | JSON `{ markdown, ...options }`; renders a PDF and submits it. |
 | `POST` | `/api/jobs/:id/cancel` | Cancel a queued/printing job. |
 
 Example status response:
@@ -252,6 +255,7 @@ Example status response:
 | Printer not found | Confirm `PRINTER_NAME` matches `lpstat -p`. |
 | Jobs stay queued | Check USB cable, printer power, and `lpstat -o DCPT230`. |
 | Cannot reach the page from another device | Verify the IP, same Wi-Fi, and firewall port 27183. |
+| Phone shows "Connection lost while sending" on larger files | The Wi-Fi dropped mid-upload. Move closer to the router and tap **Print** again — print requests are idempotent, so a retry never prints twice. |
 | `fedprint.local` does not resolve | Install `avahi`/`nss-mdns` and use the IP instead. |
 | Permission denied submitting jobs | Add the service user to the `lp` group. |
 
@@ -283,6 +287,11 @@ FedPrint aims to be safe on a trusted LAN, but it is intentionally simple.
 - Job ids are format-validated and must belong to a known active CUPS job
   before cancellation.
 - Temporary uploads are deleted after submission and swept at startup.
+- Print requests carry a client idempotency key, so retrying after a dropped
+  connection returns the original job instead of printing twice.
+- Every state-changing request is logged (method, route, status, duration) for
+  diagnosing intermittent mobile network failures; document contents are never
+  logged.
 
 ---
 
@@ -298,8 +307,8 @@ fedprint/
 │   ├── errors.ts              # AppError types + friendly messages
 │   ├── routes/                # health, printer, print, jobs
 │   ├── services/              # cups adapter, parsers, printer, print-job,
-│   │                          #   file-manager, job-registry, mdns
-│   ├── validation/            # print option + page range validation
+│   │                          #   markdown->PDF, file-manager, job-registry, mdns
+│   ├── validation/            # print option, page range, markdown validation
 │   └── utils/                 # safe command runner, network helpers
 ├── web/                       # React + Vite + TypeScript frontend
 ├── scripts/setup-fedora.sh    # Fedora prerequisite check + build

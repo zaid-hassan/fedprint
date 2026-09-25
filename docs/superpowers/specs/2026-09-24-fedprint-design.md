@@ -321,3 +321,40 @@ Validated by Zod at boot; invalid config exits with a clear message.
 ## 13. Open questions
 
 None blocking. Defaults above will be used unless changed on review.
+
+## 14. Amendment: Markdown editor (2026-09-25)
+
+A second input mode was added alongside file upload, selected by a small
+`Upload` / `Write` segmented toggle under the header. In `Write` mode the drop
+zone is replaced by a Markdown editor with an `Edit` / `Preview` switch (no
+split pane, to keep the mobile layout uncluttered). The `Page range` option is
+hidden in this mode. The same options panel and Print button are reused.
+
+- New service `src/services/markdown.ts` parses Markdown with `marked` and
+  generates a PDF with `pdfkit` (both pure JS, offline). It supports headings,
+  paragraphs, bold/italic, ordered/unordered lists, blockquotes, code blocks,
+  inline code, links (rendered as text), horizontal rules, and simple tables.
+- New endpoint `POST /api/print/markdown` accepts JSON `{ markdown, ...options }`
+  (markdown capped at 256 KB), renders a temp PDF, and submits it through the
+  existing CUPS `submit()` path, then deletes the temp file.
+- The document name is derived from the first heading/first line; preview HTML
+  in the browser escapes raw HTML and flattens links before rendering.
+- Tests cover name derivation, PDF generation, and request validation; a real
+  one-page note was printed to `DCPT230` during verification.
+
+## 15. Amendment: resilience on flaky mobile Wi-Fi (2026-09-25)
+
+Field reports of intermittent "Could not reach FedPrint" on phones, with no
+server-side errors and successful jobs from the same clients, indicated a
+connection drop during upload rather than an HTTP failure.
+
+- Print requests now carry a client-generated idempotency key (`requestId`).
+  `src/services/idempotency.ts` runs a submission at most once per key within a
+  5-minute window, so a retry after a lost response returns the original job id.
+- The client retries network-level failures once, with a timeout, and rebuilds
+  the request body per attempt. Errors now distinguish network loss from server
+  errors with accurate copy.
+- A Fastify `onResponse` hook logs every `POST` and any 5xx (route, status,
+  duration) for future diagnosis. Document contents are never logged.
+- Verified against CUPS: two requests with the same key returned one job id and
+  produced a single job.

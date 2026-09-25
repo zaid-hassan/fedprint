@@ -75,5 +75,20 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(printRoutes);
   await app.register(jobsRoutes);
 
+  // Log every state-changing request and any server error so intermittent
+  // mobile failures can be diagnosed from the journal.
+  app.addHook("onResponse", async (request, reply) => {
+    if (request.method !== "POST" && reply.statusCode < 500) return;
+    const meta = {
+      method: request.method,
+      url: request.routeOptions.url ?? request.url,
+      status: reply.statusCode,
+      durationMs: Math.round(reply.elapsedTime),
+    };
+    if (reply.statusCode >= 500) logger.error("Request completed", meta);
+    else if (reply.statusCode >= 400) logger.warn("Request completed", meta);
+    else logger.info("Request completed", meta);
+  });
+
   return app;
 }

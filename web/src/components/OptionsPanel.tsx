@@ -4,6 +4,7 @@ interface OptionsPanelProps {
   options: PrintOptions;
   capabilities: PrinterCapabilities;
   disabled?: boolean;
+  showPageRange?: boolean;
   onChange: (patch: Partial<PrintOptions>) => void;
 }
 
@@ -37,7 +38,7 @@ function Segmented<T extends string>({ label, value, choices, disabled, onChange
   );
 }
 
-export function OptionsPanel({ options, capabilities, disabled = false, onChange }: OptionsPanelProps) {
+export function OptionsPanel({ options, capabilities, disabled = false, showPageRange = true, onChange }: OptionsPanelProps) {
   const copyMin = 1;
   const copyMax = 20;
 
@@ -93,21 +94,23 @@ export function OptionsPanel({ options, capabilities, disabled = false, onChange
         </div>
       </div>
 
-      <div className="field">
-        <label className="field__label" htmlFor="page-range">
-          Page range
-        </label>
-        <input
-          id="page-range"
-          className="text-input"
-          type="text"
-          inputMode="text"
-          placeholder="All"
-          value={options.pages}
-          disabled={disabled}
-          onChange={(event) => onChange({ pages: event.target.value })}
-        />
-      </div>
+      {showPageRange ? (
+        <div className="field">
+          <label className="field__label" htmlFor="page-range">
+            Page range
+          </label>
+          <input
+            id="page-range"
+            className="text-input"
+            type="text"
+            inputMode="text"
+            placeholder="All"
+            value={options.pages}
+            disabled={disabled}
+            onChange={(event) => onChange({ pages: event.target.value })}
+          />
+        </div>
+      ) : null}
 
       <Segmented<Orientation>
         label="Orientation"

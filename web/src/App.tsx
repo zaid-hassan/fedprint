@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cancelJob, getJobs, getPrinterStatus, printDocument } from "./api";
+import { cancelJob, getJobs, getPrinterStatus, printDocument, printMarkdown } from "./api";
 import { DropZone } from "./components/DropZone";
 import { FileCard } from "./components/FileCard";
 import { Header } from "./components/Header";
 import { JobsList } from "./components/JobsList";
+import { MarkdownEditor } from "./components/MarkdownEditor";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { PrintButton } from "./components/PrintButton";
 import type { PrintJob, PrintOptions, PrinterCapabilities, PrinterStatus } from "./types";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, countPdfPages, isAcceptedFile } from "./utils";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, countPdfPages, isAcceptedFile, newRequestId } from "./utils";
 
 const DEFAULT_CAPABILITIES: PrinterCapabilities = {
   pageSizes: ["A4", "A5", "Letter"],
@@ -29,16 +30,25 @@ interface Notice {
   text: string;
 }
 
+type InputMode = "upload" | "write";
+
 export default function App() {
   const [printer, setPrinter] = useState<PrinterStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [mode, setMode] = useState<InputMode>("upload");
   const [file, setFile] = useState<File | undefined>(undefined);
+  const [markdown, setMarkdown] = useState("");
   const [pages, setPages] = useState<number | undefined>(undefined);
   const [options, setOptions] = useState<PrintOptions>(DEFAULT_OPTIONS);
   const [jobs, setJobs] = useState<PrintJob[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const noticeTimer = useRef<number | undefined>(undefined);
+  const requestIdRef = useRef<string>(newRequestId());
+
+  const resetRequestId = useCallback(() => {
+    requestIdRef.current = newRequestId();
+  }, []);
 
   const capabilities = printer?.capabilities ?? DEFAULT_CAPABILITIES;
 
@@ -103,6 +113,7 @@ export default function App() {
     }
     setFile(next);
     setPages(undefined);
+    resetRequestId();
     void countPdfPages(next).then(setPages);
   }
 
@@ -110,17 +121,39 @@ export default function App() {
     setFile(undefined);
     setPages(undefined);
     setNotice(null);
+    resetRequestId();
+  }
+
+  function handleMarkdownChange(value: string): void {
+    setMarkdown(value);
+    resetRequestId();
+  }
+
+  const hasContent = mode === "upload" ? Boolean(file) : markdown.trim().length > 0;
+
+  function switchMode(next: InputMode): void {
+    setMode(next);
+    setNotice(null);
+    resetRequestId();
   }
 
   async function handlePrint(): Promise<void> {
-    if (!file) return;
+    if (!hasContent) return;
     setBusy(true);
     setNotice(null);
     try {
-      const response = await printDocument(file, options);
+      const response =
+        mode === "upload" && file
+          ? await printDocument(file, options, requestIdRef.current)
+          : await printMarkdown(markdown, options, requestIdRef.current);
+      // Reusing the same id on a retry is safe (the server dedupes), so a lost
+      // response can be retried by tapping Print again without printing twice.
       flash({ type: "success", text: `Sent to printer · job ${response.jobId}` });
-      setFile(undefined);
-      setPages(undefined);
+      if (mode === "upload") {
+        setFile(undefined);
+        setPages(undefined);
+      }
+      resetRequestId();
       void refreshJobs();
     } catch (error) {
       flash({ type: "error", text: (error as Error).message });
@@ -142,22 +175,48 @@ export default function App() {
     <div className="app">
       <Header printer={printer} error={statusError} />
       <main className="main">
-        {file ? (
-          <FileCard file={file} pages={pages} onRemove={handleRemove} />
+        <div className="mode-toggle">
+          <div className="segmented" role="group" aria-label="Input method">
+            <button
+              type="button"
+              className={`segmented__item${mode === "upload" ? " segmented__item--active" : ""}`}
+              aria-pressed={mode === "upload"}
+              onClick={() => switchMode("upload")}
+            >
+              Upload
+            </button>
+            <button
+              type="button"
+              className={`segmented__item${mode === "write" ? " segmented__item--active" : ""}`}
+              aria-pressed={mode === "write"}
+              onClick={() => switchMode("write")}
+            >
+              Write
+            </button>
+          </div>
+        </div>
+
+        {mode === "upload" ? (
+          file ? (
+            <FileCard file={file} pages={pages} onRemove={handleRemove} />
+          ) : (
+            <DropZone onFile={handleFile} />
+          )
         ) : (
-          <DropZone onFile={handleFile} />
+          <MarkdownEditor value={markdown} disabled={busy} onChange={handleMarkdownChange} />
         )}
 
-        {file ? (
+        {mode === "write" || file ? (
           <OptionsPanel
             options={options}
             capabilities={capabilities}
             disabled={busy}
+            showPageRange={mode === "upload"}
             onChange={(patch) => setOptions((current) => ({ ...current, ...patch }))}
           />
         ) : null}
 
-        <PrintButton disabled={!file} busy={busy} onClick={() => void handlePrint()} />
+        <PrintButton disabled={!hasContent} busy={busy} onClick={() => void handlePrint()} />
 
         {notice ? (
           <p className={`notice notice--${notice.type}`} role="alert">

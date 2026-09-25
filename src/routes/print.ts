@@ -12,8 +12,11 @@ import {
   removeFile,
   sanitizeFilename,
 } from "../services/file-manager.js";
+import { isRequestId, runOnce } from "../services/idempotency.js";
+import { deriveDocumentName, renderMarkdownToPdf } from "../services/markdown.js";
 import { getCapabilities, getPrinterLabel } from "../services/printer.js";
 import { submit } from "../services/print-job.js";
+import { parseMarkdownBody } from "../validation/markdown.js";
 import { parsePrintOptions } from "../validation/print-options.js";
 
 export async function printRoutes(app: FastifyInstance): Promise<void> {
@@ -59,11 +62,44 @@ export async function printRoutes(app: FastifyInstance): Promise<void> {
         throw new UnsupportedFileError();
       }
 
+      const filePath = tempPath;
       const options = parsePrintOptions(fields);
       const [capabilities, printerLabel] = await Promise.all([getCapabilities(), getPrinterLabel()]);
 
-      const { jobId } = await submit({ filePath: tempPath, displayName, options, capabilities, printerLabel });
+      const requestId = isRequestId(fields.requestId) ? fields.requestId : undefined;
+      const submitTask = () => submit({ filePath, displayName, options, capabilities, printerLabel });
+      const { jobId } = requestId ? await runOnce(requestId, submitTask) : await submitTask();
       logger.info("Print job submitted", { jobId, copies: options.copies, pages: options.pages, media: options.media });
+
+      return { ok: true, jobId, status: "queued" };
+    } finally {
+      if (tempPath) {
+        try {
+          await removeFile(tempPath);
+        } catch (error) {
+          logger.warn("Could not remove temp file", { reason: (error as Error).message });
+        }
+      }
+    }
+  });
+
+  app.post("/api/print/markdown", async (request) => {
+    const markdown = parseMarkdownBody(request.body);
+    const options = parsePrintOptions(request.body as Record<string, unknown>);
+    const [capabilities, printerLabel] = await Promise.all([getCapabilities(), getPrinterLabel()]);
+
+    let tempPath: string | undefined;
+    try {
+      tempPath = await renderMarkdownToPdf(markdown, options.media);
+      const filePath = tempPath;
+      const displayName = sanitizeFilename(deriveDocumentName(markdown));
+
+      const requestId = isRequestId((request.body as Record<string, unknown>).requestId)
+        ? ((request.body as Record<string, unknown>).requestId as string)
+        : undefined;
+      const submitTask = () => submit({ filePath, displayName, options, capabilities, printerLabel });
+      const { jobId } = requestId ? await runOnce(requestId, submitTask) : await submitTask();
+      logger.info("Markdown print job submitted", { jobId, media: options.media, copies: options.copies });
 
       return { ok: true, jobId, status: "queued" };
     } finally {
