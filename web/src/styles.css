@@ -499,6 +499,27 @@ body {
   max-width: 100%;
 }
 
+.markdown-body .mermaid {
+  margin: 4px 0 12px;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.markdown-body .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-body .mermaid--error {
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: var(--error);
+  font-size: 0.875rem;
+  text-align: left;
+}
+
 /* Print button */
 .print-button {
   width: 100%;

@@ -7,6 +7,7 @@ import { JobsList } from "./components/JobsList";
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { PrintButton } from "./components/PrintButton";
+import { renderMermaidDiagramsToPng } from "./mermaid";
 import type { PrintJob, PrintOptions, PrinterCapabilities, PrinterStatus } from "./types";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, countPdfPages, isAcceptedFile, newRequestId } from "./utils";
 
@@ -142,10 +143,11 @@ export default function App() {
     setBusy(true);
     setNotice(null);
     try {
+      const diagrams = mode === "write" ? await renderMermaidDiagramsToPng(markdown) : [];
       const response =
         mode === "upload" && file
           ? await printDocument(file, options, requestIdRef.current)
-          : await printMarkdown(markdown, options, requestIdRef.current);
+          : await printMarkdown(markdown, options, requestIdRef.current, diagrams);
       // Reusing the same id on a retry is safe (the server dedupes), so a lost
       // response can be retried by tapping Print again without printing twice.
       flash({ type: "success", text: `Sent to printer · job ${response.jobId}` });

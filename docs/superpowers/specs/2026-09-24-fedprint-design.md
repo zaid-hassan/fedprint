@@ -358,3 +358,30 @@ connection drop during upload rather than an HTTP failure.
   duration) for future diagnosis. Document contents are never logged.
 - Verified against CUPS: two requests with the same key returned one job id and
   produced a single job.
+
+## 16. Amendment: Mermaid diagrams (2026-09-25)
+
+The Markdown editor supports `mermaid` fenced blocks. Because the server-side
+PDF renderer is pure JS and cannot rasterize mermaid, rendering is split:
+
+- **Preview:** `web/src/mermaid.ts` lazy-loads mermaid (dynamic import, so the
+  main bundle is unchanged) and renders each `.mermaid` placeholder in the
+  preview. `securityLevel: "strict"` and `htmlLabels: false` keep diagrams
+  script-free and reliably rasterizable.
+- **Print:** before submitting, the client walks the markdown with `marked`
+  using the same traversal order as the PDF renderer (top-level code blocks and
+  blockquotes), rasterizes each diagram to a 2× PNG via canvas, and sends them
+  as an ordered `diagrams` array (a `null` entry marks a failed diagram).
+- **Embedding:** `renderMarkdownToPdf(markdown, pageSize, diagrams)` consumes
+  one entry per mermaid code token; a `null` (or exhausted array) falls back to
+  printing the source as a code block, preserving alignment. PNG dimensions are
+  read from the IHDR header; images are scaled to fit the page and centred.
+- **Limits:** max 20 diagrams, each data URL capped at ~2.5 MB (browser also
+  falls back to 1× scale if a 2× PNG is too large).
+- The preview's old `&lt;`/`&gt;` pre-escaping was replaced with a renderer
+  override for raw HTML, which fixes corruption of code blocks containing `>`
+  (e.g. mermaid arrows) while still neutralising HTML.
+- Verified against CUPS by submitting a mermaid document with an embedded test
+  image: job `DCPT230-30` printed and the temp file was cleaned up. Browser
+  rasterization was type-checked and build-verified but not executed in a
+  headless browser in this environment.

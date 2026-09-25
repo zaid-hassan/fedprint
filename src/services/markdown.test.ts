@@ -3,6 +3,10 @@ import { afterAll, describe, expect, it } from "vitest";
 import { deriveDocumentName, renderMarkdownToPdf } from "./markdown.js";
 import { removeFile } from "./file-manager.js";
 
+// A valid 4x4 PNG (corrupt fixtures make pdfkit's decoder thrash).
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAEElEQVR4nGOQS7kDRwzEcQAtMhXhA/ptegAAAABJRU5ErkJggg==";
+
 const created: string[] = [];
 
 afterAll(async () => {
@@ -59,5 +63,23 @@ describe("renderMarkdownToPdf", () => {
     const content = await fsp.readFile(filePath);
     expect(content.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(content.length).toBeGreaterThan(500);
+  });
+
+  it("embeds a provided diagram image in place of the code block", async () => {
+    const markdown = "# Diagram\n\n```mermaid\ngraph TD; A-->B;\n```\n";
+    const filePath = await renderMarkdownToPdf(markdown, "A4", [Buffer.from(PNG_BASE64, "base64")]);
+    created.push(filePath);
+
+    const content = await fsp.readFile(filePath);
+    expect(content.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+  });
+
+  it("falls back to a code block when a diagram image is missing", async () => {
+    const markdown = "```mermaid\ngraph TD; A-->B;\n```\n";
+    const filePath = await renderMarkdownToPdf(markdown, "A4", [null]);
+    created.push(filePath);
+
+    const content = await fsp.readFile(filePath);
+    expect(content.subarray(0, 5).toString("latin1")).toBe("%PDF-");
   });
 });

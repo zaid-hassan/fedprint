@@ -90,4 +90,14 @@ describe("FedPrint API", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json().code).toBe("BAD_REQUEST");
   });
+
+  it("rejects invalid diagram data with 400", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/print/markdown",
+      payload: { markdown: "# X", diagrams: ["nope"] },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("BAD_REQUEST");
+  });
 });

@@ -84,13 +84,13 @@ export async function printRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post("/api/print/markdown", async (request) => {
-    const markdown = parseMarkdownBody(request.body);
+    const { markdown, diagrams } = parseMarkdownBody(request.body);
     const options = parsePrintOptions(request.body as Record<string, unknown>);
     const [capabilities, printerLabel] = await Promise.all([getCapabilities(), getPrinterLabel()]);
 
     let tempPath: string | undefined;
     try {
-      tempPath = await renderMarkdownToPdf(markdown, options.media);
+      tempPath = await renderMarkdownToPdf(markdown, options.media, diagrams);
       const filePath = tempPath;
       const displayName = sanitizeFilename(deriveDocumentName(markdown));
 

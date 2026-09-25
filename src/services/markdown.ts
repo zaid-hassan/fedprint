@@ -153,6 +153,40 @@ function renderList(doc: PdfDoc, list: Tokens.List, depth = 0): void {
   doc.moveDown(0.3);
 }
 
+function isMermaidLang(lang: string | undefined): boolean {
+  return (lang ?? "").trim().toLowerCase().startsWith("mermaid");
+}
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function readPngSize(buffer: Buffer): { width: number; height: number } | undefined {
+  if (buffer.length < 24) return undefined;
+  if (!PNG_SIGNATURE.every((byte, index) => buffer[index] === byte)) return undefined;
+  if (buffer.toString("latin1", 12, 16) !== "IHDR") return undefined;
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  if (width === 0 || height === 0) return undefined;
+  return { width, height };
+}
+
+/** Places a pre-rasterized diagram, scaled to fit the page and centred. */
+function renderDiagram(doc: PdfDoc, buffer: Buffer): void {
+  const size = readPngSize(buffer);
+  if (!size) throw new Error("Unsupported diagram image");
+
+  const contentWidth = doc.page.width - MARGIN * 2;
+  const contentHeight = doc.page.height - MARGIN * 2;
+  const scale = Math.min(contentWidth / size.width, contentHeight / size.height);
+  const width = size.width * scale;
+  const height = size.height * scale;
+
+  if (doc.y + height > doc.page.height - MARGIN) doc.addPage();
+
+  const y = doc.y;
+  doc.image(buffer, MARGIN + (contentWidth - width) / 2, y, { width, height });
+  doc.y = y + height + 10;
+}
+
 function renderCode(doc: PdfDoc, token: Tokens.Code): void {
   const contentWidth = doc.page.width - MARGIN * 2;
   const text = token.text ?? "";
@@ -170,7 +204,7 @@ function renderCode(doc: PdfDoc, token: Tokens.Code): void {
   doc.font("Helvetica").fontSize(BODY_SIZE).fillColor(INK);
 }
 
-function renderBlockquote(doc: PdfDoc, token: Tokens.Blockquote): void {
+function renderBlockquote(doc: PdfDoc, token: Tokens.Blockquote, diagrams: Array<Buffer | null>): void {
   const contentWidth = doc.page.width - MARGIN * 2;
   const startY = doc.y;
 
@@ -181,7 +215,7 @@ function renderBlockquote(doc: PdfDoc, token: Tokens.Blockquote): void {
       renderInline(doc, inline, { bold: false, italic: true, code: false }, { x: MARGIN + 16, width: contentWidth - 16, color: MUTED });
       doc.moveDown(0.35);
     } else {
-      renderBlocks(doc, [child]);
+      renderBlocks(doc, [child], diagrams);
     }
   }
 
@@ -225,7 +259,7 @@ function renderHr(doc: PdfDoc): void {
 
 const HEADING_SIZES: Record<number, number> = { 1: 22, 2: 18, 3: 15, 4: 13, 5: 12, 6: 12 };
 
-function renderBlocks(doc: PdfDoc, tokens: Token[]): void {
+function renderBlocks(doc: PdfDoc, tokens: Token[], diagrams: Array<Buffer | null>): void {
   for (const token of tokens) {
     switch (token.type) {
       case "heading": {
@@ -254,11 +288,24 @@ function renderBlocks(doc: PdfDoc, tokens: Token[]): void {
       case "list":
         renderList(doc, token as Tokens.List);
         break;
-      case "code":
-        renderCode(doc, token as Tokens.Code);
+      case "code": {
+        const code = token as Tokens.Code;
+        if (isMermaidLang(code.lang)) {
+          const diagram = diagrams.shift() ?? null;
+          if (diagram) {
+            try {
+              renderDiagram(doc, diagram);
+              break;
+            } catch {
+              // Fall back to printing the source if the image can't be embedded.
+            }
+          }
+        }
+        renderCode(doc, code);
         break;
+      }
       case "blockquote":
-        renderBlockquote(doc, token as Tokens.Blockquote);
+        renderBlockquote(doc, token as Tokens.Blockquote, diagrams);
         break;
       case "table":
         renderTable(doc, token as Tokens.Table);
@@ -295,8 +342,16 @@ export function deriveDocumentName(markdown: string, fallback = "document.pdf"):
   return `${cleaned.slice(0, 80).trim()}.pdf`;
 }
 
-/** Renders markdown to a temporary PDF file and returns its path. */
-export async function renderMarkdownToPdf(markdown: string, pageSize: SupportedPageSize): Promise<string> {
+/**
+ * Renders markdown to a temporary PDF file and returns its path. `diagrams`
+ * holds pre-rasterized PNG images for mermaid code blocks, in document order;
+ * a null entry falls back to printing the block as code.
+ */
+export async function renderMarkdownToPdf(
+  markdown: string,
+  pageSize: SupportedPageSize,
+  diagrams: Array<Buffer | null> = [],
+): Promise<string> {
   ensureUploadDir();
   const filePath = createTempPath(".pdf");
   const doc = new PDFDocument({
@@ -312,7 +367,7 @@ export async function renderMarkdownToPdf(markdown: string, pageSize: SupportedP
   try {
     const tokens = Lexer.lex(markdown, { gfm: true });
     doc.font("Helvetica").fontSize(BODY_SIZE).fillColor(INK);
-    renderBlocks(doc, tokens);
+    renderBlocks(doc, [...tokens], diagrams);
   } catch (error) {
     doc.end();
     await completion.catch(() => undefined);

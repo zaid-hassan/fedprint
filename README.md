@@ -35,6 +35,9 @@ Brother DCP-T230  (CUPS queue: DCPT230)
 - Drag-and-drop or file-picker upload of **PDF, PNG, JPG/JPEG, TXT** (max 25 MB).
 - A built-in **Markdown editor** with live preview that prints a clean, formatted
   PDF (headings, lists, quotes, code blocks) — no attachments or extra apps.
+- **Mermaid diagrams**: fenced ` ```mermaid ` blocks render in the preview and
+  are rasterized in the browser and embedded into the printed PDF. Mermaid is
+  loaded on demand, so pages without diagrams stay light.
 - Print options: copies (1–20), page range (`all`, `1-3`, `1,3,5`), orientation,
   paper size (A4/A5/Letter), color mode, and duplex **only when CUPS reports it**.
 - Live printer status from CUPS, refreshed while the page is open.
@@ -225,7 +228,7 @@ If `avahi-daemon` and `avahi-tools` are installed, FedPrint also publishes
 | `GET` | `/api/printer/status` | Printer state and CUPS capabilities. |
 | `GET` | `/api/jobs` | Recent jobs (active + completed) from CUPS. |
 | `POST` | `/api/print` | Multipart upload + options; submits to CUPS. |
-| `POST` | `/api/print/markdown` | JSON `{ markdown, ...options }`; renders a PDF and submits it. |
+| `POST` | `/api/print/markdown` | JSON `{ markdown, diagrams?, ...options }`; renders a PDF and submits it. `diagrams` is an ordered array of PNG data URLs (or `null`) for mermaid blocks. |
 | `POST` | `/api/jobs/:id/cancel` | Cancel a queued/printing job. |
 
 Example status response:

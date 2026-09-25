@@ -60,7 +60,14 @@ export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   unknown: "Unknown",
 };
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 const markdownRenderer: RendererObject = {
+  html(token: Tokens.HTML | Tokens.Tag) {
+    return escapeHtml(token.text);
+  },
   link(token: Tokens.Link) {
     return this.parser.parseInline(token.tokens);
   },
@@ -71,19 +78,19 @@ const markdownRenderer: RendererObject = {
 
 marked.use({ gfm: true, breaks: true, renderer: markdownRenderer });
 
-function escapeAngleBrackets(input: string): string {
-  return input.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+const MERMAID_BLOCK = /<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g;
 
 /**
  * Renders markdown to sanitized HTML for the preview pane. Raw HTML is
- * neutralised and links are flattened to text, so nothing executable is
- * produced. Mirrors the structure of the printed PDF.
+ * neutralised (without corrupting code text) and links are flattened, so
+ * nothing executable is produced. Mermaid blocks become placeholders that the
+ * editor renders into diagrams.
  */
 export function renderMarkdownHtml(markdown: string): string {
   if (markdown.trim().length === 0) return "";
-  const result = marked.parse(escapeAngleBrackets(markdown), { async: false });
-  return typeof result === "string" ? result : "";
+  const result = marked.parse(markdown, { async: false });
+  const html = typeof result === "string" ? result : "";
+  return html.replace(MERMAID_BLOCK, (_match, code: string) => `<div class="mermaid">${code}</div>`);
 }
 
 /** Best-effort PDF page count. Returns undefined when it cannot be determined. */

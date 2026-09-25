@@ -104,8 +104,13 @@ export function printDocument(file: File, options: PrintOptions, requestId: stri
   });
 }
 
-export function printMarkdown(markdown: string, options: PrintOptions, requestId: string): Promise<PrintResponse> {
-  return request<PrintResponse>("/api/print/markdown", jsonInit("POST", { ...options, markdown, requestId }), {
+export function printMarkdown(
+  markdown: string,
+  options: PrintOptions,
+  requestId: string,
+  diagrams: Array<string | null> = [],
+): Promise<PrintResponse> {
+  return request<PrintResponse>("/api/print/markdown", jsonInit("POST", { ...options, markdown, requestId, diagrams }), {
     timeoutMs: 60_000,
     retries: 1,
   });

@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { renderMermaidInElement } from "../mermaid";
 import { renderMarkdownHtml } from "../utils";
 
 interface MarkdownEditorProps {
@@ -18,7 +19,15 @@ Write your document…
 
 export function MarkdownEditor({ value, disabled = false, onChange }: MarkdownEditorProps) {
   const [preview, setPreview] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
   const html = useMemo(() => (preview ? renderMarkdownHtml(value) : ""), [preview, value]);
+
+  useEffect(() => {
+    if (!preview) return;
+    const container = previewRef.current;
+    if (!container) return;
+    void renderMermaidInElement(container).catch(() => undefined);
+  }, [preview, html]);
 
   return (
     <div className="md">
@@ -36,7 +45,7 @@ export function MarkdownEditor({ value, disabled = false, onChange }: MarkdownEd
 
       {preview ? (
         html.length > 0 ? (
-          <div className="md__preview markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
+          <div ref={previewRef} className="md__preview markdown-body" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
           <div className="md__preview md__preview--empty">Nothing to preview yet.</div>
         )
